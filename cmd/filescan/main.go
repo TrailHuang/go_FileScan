@@ -1,0 +1,205 @@
+package main
+
+import (
+	"flag"
+	"fmt"
+	"log"
+	"os"
+	"os/signal"
+	"runtime"
+	"syscall"
+
+	"go-filescan/pkg/config"
+	"go-filescan/pkg/learning"
+	"go-filescan/pkg/output"
+	"go-filescan/pkg/scanner"
+	"go-filescan/pkg/watcher"
+)
+
+var (
+	configPath = flag.String("config", "config.yaml", "Path to configuration file")
+	mode       = flag.String("mode", "watch", "Operation mode: watch, scan, or once")
+	targetDir  = flag.String("dir", "", "Target directory to scan (overrides config)")
+	outputFile = flag.String("output", "", "Output file path (overrides config)")
+	format     = flag.String("format", "", "Output format: json, text, csv (overrides config)")
+	versionFlag = flag.Bool("version", false, "Show version information")
+)
+
+// 版本信息（通过编译时注入）
+var (
+	version   = "dev"
+	buildTime = "unknown"
+	gitCommit = "unknown"
+)
+
+func main() {
+	flag.Parse()
+
+	if *versionFlag {
+		fmt.Printf("Go文件病毒扫描程序\n")
+		fmt.Printf("版本: %s\n", version)
+		fmt.Printf("构建时间: %s\n", buildTime)
+		fmt.Printf("Git提交: %s\n", gitCommit)
+		fmt.Printf("Go版本: %s\n", runtime.Version())
+		fmt.Printf("操作系统: %s\n", runtime.GOOS)
+		fmt.Printf("架构: %s\n", runtime.GOARCH)
+		return
+	}
+
+	cfg, err := config.LoadConfig(*configPath)
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	if *targetDir != "" {
+		cfg.Scanner.WatchDirectories = []string{*targetDir}
+	}
+
+	if *outputFile != "" {
+		cfg.Output.File = *outputFile
+	}
+
+	if *format != "" {
+		cfg.Output.Format = *format
+	}
+
+	outputConfig := output.OutputConfig{
+		Format:           output.OutputFormat(cfg.Output.Format),
+		File:             cfg.Output.File,
+		IncludeCleanFiles: cfg.Output.IncludeCleanFiles,
+	}
+
+	resultWriter, err := output.NewResultWriter(outputConfig)
+	if err != nil {
+		log.Fatalf("Failed to create result writer: %v", err)
+	}
+	defer resultWriter.Close()
+
+	learningTable, err := learning.NewLearningTable(cfg.Scanner.LearningTablePath)
+	if err != nil {
+		log.Fatalf("Failed to load learning table: %v", err)
+	}
+	defer learningTable.Close()
+
+	fmt.Printf("Loaded learning table with %d records\n", learningTable.GetRecordCount())
+
+	fileSizeLimit := parseFileSizeLimit(cfg.Scanner.Scan.FileSizeLimit)
+
+	fileScanner, err := scanner.NewFileScanner(
+		learningTable,
+		cfg.Scanner.ClamAV.Enabled,
+		cfg.Scanner.ClamAV.SocketPath,
+		cfg.Scanner.Scan.MaxConcurrentScans,
+		cfg.Scanner.Scan.ScanTimeout,
+		fileSizeLimit,
+	)
+	if err != nil {
+		log.Fatalf("Failed to create file scanner: %v", err)
+	}
+	defer fileScanner.Stop()
+
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
+
+	switch *mode {
+	case "watch":
+		if err := runWatchMode(cfg, fileScanner, resultWriter, signalChan); err != nil {
+			log.Fatalf("Watch mode failed: %v", err)
+		}
+	case "scan", "once":
+		if err := runScanMode(cfg, fileScanner, resultWriter); err != nil {
+			log.Fatalf("Scan mode failed: %v", err)
+		}
+	default:
+		log.Fatalf("Unknown mode: %s", *mode)
+	}
+}
+
+func runWatchMode(cfg *config.Config, fileScanner *scanner.FileScanner, resultWriter *output.ResultWriter, signalChan chan os.Signal) error {
+	fmt.Println("Starting file system watcher...")
+
+	dirWatcher, err := watcher.NewDirectoryWatcher(cfg.Scanner.WatchDirectories, fileScanner)
+	if err != nil {
+		return fmt.Errorf("failed to create directory watcher: %w", err)
+	}
+	defer dirWatcher.Stop()
+
+	resultsChan := make(chan *scanner.ScanResult, 100)
+
+	go func() {
+		for result := range resultsChan {
+			if err := resultWriter.WriteResult(result); err != nil {
+				log.Printf("Failed to write result: %v", err)
+			}
+		}
+	}()
+
+	fmt.Println("Performing initial directory scan...")
+	if err := dirWatcher.InitialScan(resultsChan); err != nil {
+		return fmt.Errorf("initial scan failed: %w", err)
+	}
+
+	fmt.Println("Starting real-time monitoring...")
+	if err := dirWatcher.Start(resultsChan); err != nil {
+		return fmt.Errorf("failed to start watcher: %w", err)
+	}
+
+	<-signalChan
+	fmt.Println("\nReceived shutdown signal, stopping...")
+
+	close(resultsChan)
+
+	if err := resultWriter.WriteSummary(); err != nil {
+		log.Printf("Failed to write summary: %v", err)
+	}
+
+	return nil
+}
+
+func runScanMode(cfg *config.Config, fileScanner *scanner.FileScanner, resultWriter *output.ResultWriter) error {
+	fmt.Println("Starting directory scan...")
+
+	resultsChan, err := fileScanner.ScanDirectory(cfg.Scanner.WatchDirectories[0])
+	if err != nil {
+		return fmt.Errorf("failed to start directory scan: %w", err)
+	}
+
+	for result := range resultsChan {
+		if err := resultWriter.WriteResult(result); err != nil {
+			log.Printf("Failed to write result: %v", err)
+		}
+	}
+
+	if err := resultWriter.WriteSummary(); err != nil {
+		log.Printf("Failed to write summary: %v", err)
+	}
+
+	return nil
+}
+
+func parseFileSizeLimit(sizeStr string) int64 {
+	if sizeStr == "" {
+		return 0
+	}
+
+	var size int64
+	var unit string
+
+	n, _ := fmt.Sscanf(sizeStr, "%d%s", &size, &unit)
+	if n < 1 {
+		return 0
+	}
+
+	switch unit {
+	case "B", "":
+		return size
+	case "KB":
+		return size * 1024
+	case "MB":
+		return size * 1024 * 1024
+	case "GB":
+		return size * 1024 * 1024 * 1024
+	default:
+		return 0
+	}
+}

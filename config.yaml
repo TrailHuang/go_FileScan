@@ -1,0 +1,35 @@
+# 文件病毒扫描程序配置
+scanner:
+  # 监控目录路径
+  watch_directories:
+    - /tmp/scan_directory
+    - /var/www/uploads
+
+  # 学习表文件路径
+  learning_table_path: /mnt/d/BaiduSyncdisk/my_code/GO/go_FileScan/md5hash.txt
+
+  # ClamAV配置
+  clamav:
+    enabled: false
+    socket_path: /var/run/clamav/clamd.ctl
+    timeout: 30s
+
+  # 扫描配置
+  scan:
+    max_concurrent_scans: 10
+    file_size_limit: 100MB
+    scan_timeout: 60s
+
+  # 日志配置
+  log:
+    level: info
+    file: ./scanner.log
+    max_size: 100MB
+    max_backups: 5
+    max_age: 30
+
+# 输出配置
+output:
+  format: json
+  file: ./scan_results.json
+  include_clean_files: false
