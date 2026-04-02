@@ -2,17 +2,10 @@
 scanner:
   # 监控目录路径
   watch_directories:
-    - /tmp/scan_directory
     - /var/www/uploads
 
   # 学习表文件路径
   learning_table_path: /mnt/d/BaiduSyncdisk/my_code/GO/go_FileScan/md5hash.txt
-
-  # ClamAV配置
-  clamav:
-    enabled: false
-    socket_path: /var/run/clamav/clamd.ctl
-    timeout: 30s
 
   # 扫描配置
   scan:
