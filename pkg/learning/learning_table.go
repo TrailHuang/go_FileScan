@@ -21,7 +21,7 @@ type LearningTable struct {
 	mu       sync.RWMutex
 }
 
-func NewLearningTable(filePath string) (*LearningTable, error) {
+func NewLearningTable(filePath string, mode string) (*LearningTable, error) {
 	lt := &LearningTable{
 		filePath: filePath,
 		records:  make(map[string]*VirusRecord),
@@ -31,8 +31,10 @@ func NewLearningTable(filePath string) (*LearningTable, error) {
 		return nil, err
 	}
 
-	if err := lt.startWatching(); err != nil {
-		return nil, err
+	if mode != "once" {
+		if err := lt.startWatching(); err != nil {
+			return nil, err
+		}
 	}
 
 	return lt, nil
@@ -149,8 +151,6 @@ func (lt *LearningTable) pollChanges() {
 				newCount := lt.GetRecordCount()
 				fmt.Printf("学习表重载成功! 记录数: %d -> %d\n", oldCount, newCount)
 			}
-		} else {
-			fmt.Printf("文件未发生变化，继续监控...\n")
 		}
 	}
 }

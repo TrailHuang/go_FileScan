@@ -14,18 +14,17 @@ import (
 )
 
 type ScanResult struct {
-	FilePath    string    `json:"file_path"`
-	MD5         string    `json:"md5"`
-	VirusName   string    `json:"virus_name"`
-	IsInfected  bool      `json:"-"`
-	ScanMethod  string    `json:"-"`
-	ScanTime    time.Time `json:"scan_time"`
-	Error       string    `json:"error,omitempty"`
+	FilePath   string    `json:"file_path"`
+	MD5        string    `json:"md5"`
+	VirusName  string    `json:"virus_name"`
+	IsInfected bool      `json:"-"`
+	ScanMethod string    `json:"-"`
+	ScanTime   time.Time `json:"scan_time"`
+	Error      string    `json:"error,omitempty"`
 }
 
 type FileScanner struct {
 	learningTable *learning.LearningTable
-	clamavScanner *ClamAVScanner
 	maxWorkers    int
 	scanTimeout   time.Duration
 	fileSizeLimit int64
@@ -34,7 +33,7 @@ type FileScanner struct {
 	wg            sync.WaitGroup
 }
 
-func NewFileScanner(learningTable *learning.LearningTable, clamavEnabled bool, clamavSocket string, maxWorkers int, scanTimeout time.Duration, fileSizeLimit int64) (*FileScanner, error) {
+func NewFileScanner(learningTable *learning.LearningTable, maxWorkers int, scanTimeout time.Duration, fileSizeLimit int64) (*FileScanner, error) {
 	fs := &FileScanner{
 		learningTable: learningTable,
 		maxWorkers:    maxWorkers,
@@ -42,14 +41,6 @@ func NewFileScanner(learningTable *learning.LearningTable, clamavEnabled bool, c
 		fileSizeLimit: fileSizeLimit,
 		resultsChan:   make(chan *ScanResult, 100),
 		stopChan:      make(chan struct{}),
-	}
-
-	if clamavEnabled {
-		clamavScanner, err := NewClamAVScanner(clamavSocket, scanTimeout)
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize ClamAV scanner: %w", err)
-		}
-		fs.clamavScanner = clamavScanner
 	}
 
 	return fs, nil
@@ -88,29 +79,12 @@ func (fs *FileScanner) ScanFile(filePath string) (*ScanResult, error) {
 		result.IsInfected = true
 		result.ScanMethod = "learning_table"
 		return result, nil
-	} else {
-		fmt.Printf("No virus found in learning table for MD5: %s\n", md5Hash)
 	}
 
-	if fs.clamavScanner != nil {
-		clamavResult, err := fs.clamavScanner.ScanFile(filePath)
-		if err != nil {
-			result.Error = fmt.Sprintf("ClamAV scan failed: %v", err)
-			result.ScanMethod = "clamav_error"
-			// 学习表和ClamAV都扫描失败，标记为白样本
-			result.VirusName = "白样本"
-			result.IsInfected = false
-		} else {
-			result.VirusName = clamavResult.VirusName
-			result.IsInfected = clamavResult.IsInfected
-			result.ScanMethod = "clamav"
-		}
-	} else {
-		// 只有学习表扫描，未发现病毒，标记为白样本
-		result.VirusName = "白样本"
-		result.IsInfected = false
-		result.ScanMethod = "md5_only"
-	}
+	fmt.Printf("No virus found in learning table for MD5: %s\n", md5Hash)
+	result.VirusName = "白样本"
+	result.IsInfected = false
+	result.ScanMethod = "md5_only"
 
 	return result, nil
 }
@@ -213,9 +187,6 @@ func (fs *FileScanner) worker(workChan <-chan string) {
 func (fs *FileScanner) Stop() {
 	close(fs.stopChan)
 	fs.wg.Wait()
-	if fs.clamavScanner != nil {
-		fs.clamavScanner.Close()
-	}
 }
 
 func (fs *FileScanner) GetResultsChannel() <-chan *ScanResult {

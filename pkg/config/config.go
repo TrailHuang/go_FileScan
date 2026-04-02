@@ -8,17 +8,10 @@ import (
 )
 
 type ScannerConfig struct {
-	WatchDirectories   []string      `mapstructure:"watch_directories"`
-	LearningTablePath  string        `mapstructure:"learning_table_path"`
-	ClamAV             ClamAVConfig  `mapstructure:"clamav"`
-	Scan               ScanConfig    `mapstructure:"scan"`
-	Log                LogConfig     `mapstructure:"log"`
-}
-
-type ClamAVConfig struct {
-	Enabled    bool          `mapstructure:"enabled"`
-	SocketPath string        `mapstructure:"socket_path"`
-	Timeout    time.Duration `mapstructure:"timeout"`
+	WatchDirectories  []string   `mapstructure:"watch_directories"`
+	LearningTablePath string     `mapstructure:"learning_table_path"`
+	Scan              ScanConfig `mapstructure:"scan"`
+	Log               LogConfig  `mapstructure:"log"`
 }
 
 type ScanConfig struct {
@@ -36,8 +29,8 @@ type LogConfig struct {
 }
 
 type OutputConfig struct {
-	Format           string `mapstructure:"format"`
-	File             string `mapstructure:"file"`
+	Format            string `mapstructure:"format"`
+	File              string `mapstructure:"file"`
 	IncludeCleanFiles bool   `mapstructure:"include_clean_files"`
 }
 

@@ -77,7 +77,7 @@ func main() {
 	}
 	defer resultWriter.Close()
 
-	learningTable, err := learning.NewLearningTable(cfg.Scanner.LearningTablePath)
+	learningTable, err := learning.NewLearningTable(cfg.Scanner.LearningTablePath, *mode)
 	if err != nil {
 		log.Fatalf("Failed to load learning table: %v", err)
 	}
@@ -89,8 +89,6 @@ func main() {
 
 	fileScanner, err := scanner.NewFileScanner(
 		learningTable,
-		cfg.Scanner.ClamAV.Enabled,
-		cfg.Scanner.ClamAV.SocketPath,
 		cfg.Scanner.Scan.MaxConcurrentScans,
 		cfg.Scanner.Scan.ScanTimeout,
 		fileSizeLimit,
@@ -112,6 +110,7 @@ func main() {
 		if err := runOnceMode(cfg, fileScanner, resultWriter); err != nil {
 			log.Fatalf("Once mode failed: %v", err)
 		}
+
 	case "scan":
 		if err := runScanMode(cfg, fileScanner, resultWriter, signalChan); err != nil {
 			log.Fatalf("Scan mode failed: %v", err)
