@@ -7,13 +7,11 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/fsnotify/fsnotify"
 )
 
 type VirusRecord struct {
-	MD5      string
-	Size     string
+	MD5       string
+	Size      string
 	VirusName string
 }
 
@@ -21,7 +19,6 @@ type LearningTable struct {
 	filePath string
 	records  map[string]*VirusRecord
 	mu       sync.RWMutex
-	watcher  *fsnotify.Watcher
 }
 
 func NewLearningTable(filePath string) (*LearningTable, error) {
@@ -92,52 +89,74 @@ func (lt *LearningTable) Lookup(md5 string) (*VirusRecord, bool) {
 }
 
 func (lt *LearningTable) startWatching() error {
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		return fmt.Errorf("failed to create file watcher: %w", err)
+	// 检查文件是否存在
+	if _, err := os.Stat(lt.filePath); err != nil {
+		return fmt.Errorf("learning table file does not exist: %w", err)
 	}
 
-	lt.watcher = watcher
+	fmt.Printf("开始轮询监控学习表文件: %s\n", lt.filePath)
 
-	if err := lt.watcher.Add(lt.filePath); err != nil {
-		return fmt.Errorf("failed to watch learning table file: %w", err)
-	}
-
-	go lt.watchChanges()
+	// 使用轮询方式替代文件监控
+	go lt.pollChanges()
 
 	return nil
 }
 
-func (lt *LearningTable) watchChanges() {
-	for {
-		select {
-		case event, ok := <-lt.watcher.Events:
-			if !ok {
-				return
-			}
+func (lt *LearningTable) pollChanges() {
+	fmt.Printf("开始轮询监控学习表文件变化: %s\n", lt.filePath)
 
-			if event.Has(fsnotify.Write) || event.Has(fsnotify.Create) {
-				time.Sleep(100 * time.Millisecond)
-				if err := lt.load(); err != nil {
-					fmt.Printf("Failed to reload learning table: %v\n", err)
-				} else {
-					fmt.Println("Learning table reloaded successfully")
-				}
-			}
+	// 记录上次修改时间和文件大小
+	var lastModTime time.Time
+	var lastFileSize int64
 
-		case err, ok := <-lt.watcher.Errors:
-			if !ok {
-				return
+	// 初始化上次状态
+	if fileInfo, err := os.Stat(lt.filePath); err == nil {
+		lastModTime = fileInfo.ModTime()
+		lastFileSize = fileInfo.Size()
+		fmt.Printf("初始文件状态 - 修改时间: %v, 文件大小: %d bytes\n", lastModTime, lastFileSize)
+	}
+
+	ticker := time.NewTicker(2 * time.Second) // 每2秒检查一次
+	defer ticker.Stop()
+
+	for range ticker.C {
+		// 检查文件是否存在
+		fileInfo, err := os.Stat(lt.filePath)
+		if err != nil {
+			fmt.Printf("学习表文件不存在: %v\n", err)
+			continue
+		}
+
+		currentModTime := fileInfo.ModTime()
+		currentFileSize := fileInfo.Size()
+
+		// 检查文件是否发生了变化
+		if currentModTime.After(lastModTime) || currentFileSize != lastFileSize {
+			fmt.Printf("检测到文件变化 - 修改时间: %v (上次: %v), 文件大小: %d bytes (上次: %d bytes)\n",
+				currentModTime, lastModTime, currentFileSize, lastFileSize)
+
+			// 更新状态
+			lastModTime = currentModTime
+			lastFileSize = currentFileSize
+
+			// 记录重载前的记录数
+			oldCount := lt.GetRecordCount()
+
+			// 重载学习表
+			if err := lt.load(); err != nil {
+				fmt.Printf("重载学习表失败: %v\n", err)
+			} else {
+				newCount := lt.GetRecordCount()
+				fmt.Printf("学习表重载成功! 记录数: %d -> %d\n", oldCount, newCount)
 			}
-			fmt.Printf("Learning table watcher error: %v\n", err)
+		} else {
+			fmt.Printf("文件未发生变化，继续监控...\n")
 		}
 	}
 }
 
 func (lt *LearningTable) Close() error {
-	if lt.watcher != nil {
-		return lt.watcher.Close()
-	}
+	// 轮询方式不需要特殊的关闭操作
 	return nil
 }
 

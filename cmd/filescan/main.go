@@ -6,8 +6,10 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"syscall"
+	"time"
 
 	"go-filescan/pkg/config"
 	"go-filescan/pkg/learning"
@@ -17,11 +19,11 @@ import (
 )
 
 var (
-	configPath = flag.String("config", "config.yaml", "Path to configuration file")
-	mode       = flag.String("mode", "watch", "Operation mode: watch, scan, or once")
-	targetDir  = flag.String("dir", "", "Target directory to scan (overrides config)")
-	outputFile = flag.String("output", "", "Output file path (overrides config)")
-	format     = flag.String("format", "", "Output format: json, text, csv (overrides config)")
+	configPath  = flag.String("config", "config.yaml", "Path to configuration file")
+	mode        = flag.String("mode", "watch", "Operation mode: watch, scan, or once")
+	targetDir   = flag.String("dir", "", "Target directory to scan (overrides config)")
+	outputFile  = flag.String("output", "", "Output file path (overrides config)")
+	format      = flag.String("format", "", "Output format: json, text, csv (overrides config)")
 	versionFlag = flag.Bool("version", false, "Show version information")
 )
 
@@ -64,8 +66,8 @@ func main() {
 	}
 
 	outputConfig := output.OutputConfig{
-		Format:           output.OutputFormat(cfg.Output.Format),
-		File:             cfg.Output.File,
+		Format:            output.OutputFormat(cfg.Output.Format),
+		File:              cfg.Output.File,
 		IncludeCleanFiles: cfg.Output.IncludeCleanFiles,
 	}
 
@@ -106,13 +108,99 @@ func main() {
 		if err := runWatchMode(cfg, fileScanner, resultWriter, signalChan); err != nil {
 			log.Fatalf("Watch mode failed: %v", err)
 		}
-	case "scan", "once":
-		if err := runScanMode(cfg, fileScanner, resultWriter); err != nil {
+	case "once":
+		if err := runOnceMode(cfg, fileScanner, resultWriter); err != nil {
+			log.Fatalf("Once mode failed: %v", err)
+		}
+	case "scan":
+		if err := runScanMode(cfg, fileScanner, resultWriter, signalChan); err != nil {
 			log.Fatalf("Scan mode failed: %v", err)
 		}
 	default:
 		log.Fatalf("Unknown mode: %s", *mode)
 	}
+}
+
+// performScan 执行扫描并检测文件变化
+func performScan(cfg *config.Config, fileScanner *scanner.FileScanner, resultWriter *output.ResultWriter, fileModTimes map[string]time.Time) error {
+	// 获取目录下所有文件
+	var filesToScan []string
+
+	for _, dir := range cfg.Scanner.WatchDirectories {
+		err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+
+			if !info.Mode().IsRegular() {
+				return nil
+			}
+
+			// 检查文件大小限制
+			if cfg.Scanner.Scan.FileSizeLimit != "" {
+				fileSizeLimit := parseFileSizeLimit(cfg.Scanner.Scan.FileSizeLimit)
+				if fileSizeLimit > 0 && info.Size() > fileSizeLimit {
+					fmt.Printf("Skipping large file: %s (%d bytes)\n", path, info.Size())
+					return nil
+				}
+			}
+
+			filesToScan = append(filesToScan, path)
+			return nil
+		})
+
+		if err != nil {
+			return fmt.Errorf("failed to walk directory %s: %w", dir, err)
+		}
+	}
+
+	var filesChanged []string
+
+	// 检测文件变化
+	for _, filePath := range filesToScan {
+		fileInfo, err := os.Stat(filePath)
+		if err != nil {
+			continue
+		}
+
+		currentModTime := fileInfo.ModTime()
+		lastModTime, exists := fileModTimes[filePath]
+
+		if !exists {
+			// 新文件
+			fmt.Printf("New file detected: %s\n", filePath)
+			filesChanged = append(filesChanged, filePath)
+			fileModTimes[filePath] = currentModTime
+		} else if currentModTime.After(lastModTime) {
+			// 文件已修改
+			fmt.Printf("File modified: %s (last: %v, current: %v)\n", filePath, lastModTime, currentModTime)
+			filesChanged = append(filesChanged, filePath)
+			fileModTimes[filePath] = currentModTime
+		}
+	}
+
+	// 扫描变化的文件
+	if len(filesChanged) > 0 {
+		fmt.Printf("Scanning %d changed files...\n", len(filesChanged))
+
+		for _, filePath := range filesChanged {
+			result, err := fileScanner.ScanFile(filePath)
+			if err != nil {
+				log.Printf("Failed to scan file %s: %v", filePath, err)
+				continue
+			}
+
+			if err := resultWriter.WriteResult(result); err != nil {
+				log.Printf("Failed to write result: %v", err)
+			}
+		}
+
+		fmt.Printf("Completed scanning %d changed files\n", len(filesChanged))
+	} else {
+		fmt.Println("No file changes detected")
+	}
+
+	return nil
 }
 
 func runWatchMode(cfg *config.Config, fileScanner *scanner.FileScanner, resultWriter *output.ResultWriter, signalChan chan os.Signal) error {
@@ -156,8 +244,8 @@ func runWatchMode(cfg *config.Config, fileScanner *scanner.FileScanner, resultWr
 	return nil
 }
 
-func runScanMode(cfg *config.Config, fileScanner *scanner.FileScanner, resultWriter *output.ResultWriter) error {
-	fmt.Println("Starting directory scan...")
+func runOnceMode(cfg *config.Config, fileScanner *scanner.FileScanner, resultWriter *output.ResultWriter) error {
+	fmt.Println("Starting one-time directory scan...")
 
 	resultsChan, err := fileScanner.ScanDirectory(cfg.Scanner.WatchDirectories[0])
 	if err != nil {
@@ -174,7 +262,45 @@ func runScanMode(cfg *config.Config, fileScanner *scanner.FileScanner, resultWri
 		log.Printf("Failed to write summary: %v", err)
 	}
 
+	fmt.Println("One-time scan completed, program exiting.")
 	return nil
+}
+
+func runScanMode(cfg *config.Config, fileScanner *scanner.FileScanner, resultWriter *output.ResultWriter, signalChan chan os.Signal) error {
+	fmt.Println("Starting periodic directory scan mode...")
+
+	// 记录文件最后修改时间的映射
+	fileModTimes := make(map[string]time.Time)
+
+	// 扫描间隔（可配置，默认10秒）
+	scanInterval := 10 * time.Second
+
+	ticker := time.NewTicker(scanInterval)
+	defer ticker.Stop()
+
+	// 首次扫描
+	fmt.Println("Performing initial scan...")
+	if err := performScan(cfg, fileScanner, resultWriter, fileModTimes); err != nil {
+		return fmt.Errorf("initial scan failed: %w", err)
+	}
+
+	fmt.Printf("Starting periodic scans every %v...\n", scanInterval)
+
+	for {
+		select {
+		case <-ticker.C:
+			fmt.Println("Starting periodic scan...")
+			if err := performScan(cfg, fileScanner, resultWriter, fileModTimes); err != nil {
+				log.Printf("Periodic scan failed: %v", err)
+			}
+		case <-signalChan:
+			fmt.Println("\nReceived shutdown signal, stopping...")
+			if err := resultWriter.WriteSummary(); err != nil {
+				log.Printf("Failed to write summary: %v", err)
+			}
+			return nil
+		}
+	}
 }
 
 func parseFileSizeLimit(sizeStr string) int64 {
