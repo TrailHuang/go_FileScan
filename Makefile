@@ -96,6 +96,7 @@ uninstall:
 	@echo "卸载完成"
 
 # 创建Linux ARM/x86发布包（一起打包）
+
 release: build-all $(DIST_DIR)
 	@echo "创建Linux ARM和x86发布包..."
 	@mkdir -p $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch
@@ -108,8 +109,10 @@ release: build-all $(DIST_DIR)
 
 	# 复制配置文件和文档
 	cp config.yaml $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/
-	cp learning_table.txt $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/
 	cp README.md $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/
+	cp install.sh $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/
+	cp upgrade.sh $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/
+	cp md5hash.txt $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/
 
 	# 创建安装说明
 	@echo "# Go文件病毒扫描程序安装说明" > $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
@@ -121,14 +124,22 @@ release: build-all $(DIST_DIR)
 	@echo "" >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
 	@echo "## 安装步骤" >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
 	@echo "" >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
-	@echo "### 1. 选择适合您系统的版本" >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
+	@echo "### 1. 使用安装脚本（推荐）" >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
+	@echo '```bash' >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
+	@echo 'chmod +x install.sh' >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
+	@echo 'sudo ./install.sh' >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
+	@echo '```' >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
+	@echo "" >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
+	@echo "### 2. 手动安装" >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
+	@echo "" >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
+	@echo "#### 2.1 选择适合您系统的版本" >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
 	@echo "- **x86_64系统**: 使用 filescan-linux-amd64" >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
 	@echo "- **ARM64系统**: 使用 filescan-linux-arm64" >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
 	@echo "" >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
-	@echo "### 2. 安装程序" >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
+	@echo "#### 2.2 安装程序" >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
 	@echo '```bash' >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
 	@echo '# 复制到系统目录' >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
-	@echo 'sudo cp filescan-linux-$(uname -m) /usr/local/bin/filescan' >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
+	@echo 'sudo cp filescan-linux-$(shell uname -m) /usr/local/bin/filescan' >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
 	@echo 'sudo chmod +x /usr/local/bin/filescan' >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
 	@echo '' >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
 	@echo '# 创建配置目录' >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
@@ -148,86 +159,11 @@ release: build-all $(DIST_DIR)
 	@echo '```' >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
 	@echo "" >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
 	@echo "## 升级说明" >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
-	@echo "使用相同步骤进行升级，先备份配置文件。" >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
+	@echo "使用升级脚本进行升级：`sudo ./upgrade.sh`" >> $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch/INSTALL.md
 
 	# 打包
 	cd $(DIST_DIR) && tar -czf $(PROJECT_NAME)-$(VERSION)-linux-multiarch.tar.gz $(PROJECT_NAME)-$(VERSION)-linux-multiarch
 	rm -rf $(DIST_DIR)/$(PROJECT_NAME)-$(VERSION)-linux-multiarch
 	@echo "发布包创建完成: $(PROJECT_NAME)-$(VERSION)-linux-multiarch.tar.gz"
 
-# 生成安装脚本
-install-script:
-	@echo "生成安装脚本..."
-	@echo '#!/bin/bash' > install.sh
-	@echo '# Go文件病毒扫描程序安装脚本' >> install.sh
-	@echo '' >> install.sh
-	@echo 'set -e' >> install.sh
-	@echo '' >> install.sh
-	@echo 'PROJECT_NAME="filescan"' >> install.sh
-	@echo 'VERSION="1.0.0"' >> install.sh
-	@echo 'INSTALL_DIR="/usr/local/bin"' >> install.sh
-	@echo 'CONFIG_DIR="/etc/$$PROJECT_NAME"' >> install.sh
-	@echo '' >> install.sh
-	@echo '# 检测系统架构' >> install.sh
-	@echo 'ARCH=$$(uname -m)' >> install.sh
-	@echo 'case $$ARCH in' >> install.sh
-	@echo '    x86_64) ARCH="amd64" ;;' >> install.sh
-	@echo '    aarch64) ARCH="arm64" ;;' >> install.sh
-	@echo '    armv7l) ARCH="arm" ;;' >> install.sh
-	@echo '    *) echo "不支持的架构: $$ARCH"; exit 1 ;;' >> install.sh
-	@echo 'esac' >> install.sh
-	@echo '' >> install.sh
-	@echo '# 检测操作系统' >> install.sh
-	@echo 'OS=$$(uname -s | tr "[:upper:]" "[:lower:]")' >> install.sh
-	@echo '' >> install.sh
-	@echo '# 颜色定义' >> install.sh
-	@echo 'RED="\033[0;31m"' >> install.sh
-	@echo 'GREEN="\033[0;32m"' >> install.sh
-	@echo 'YELLOW="\033[1;33m"' >> install.sh
-	@echo 'NC="\033[0m" # No Color' >> install.sh
-	@echo '' >> install.sh
-	@echo '# 日志函数' >> install.sh
-	@echo 'log_info() {' >> install.sh
-	@echo '    echo -e "$${GREEN}[INFO]$${NC} $$1"' >> install.sh
-	@echo '}' >> install.sh
-	@echo '' >> install.sh
-	@echo 'log_warn() {' >> install.sh
-	@echo '    echo -e "$${YELLOW}[WARN]$${NC} $$1"' >> install.sh
-	@echo '}' >> install.sh
-	@echo '' >> install.sh
-	@echo 'log_error() {' >> install.sh
-	@echo '    echo -e "$${RED}[ERROR]$${NC} $$1"' >> install.sh
-	@echo '}' >> install.sh
-	@echo '' >> install.sh
-	@echo '# 主安装流程' >> install.sh
-	@echo 'main() {' >> install.sh
-	@echo '    log_info "开始安装Go文件病毒扫描程序 v$$VERSION"' >> install.sh
-	@echo '    echo "安装完成!"' >> install.sh
-	@echo '}' >> install.sh
-	@echo '' >> install.sh
-	@echo 'main "$$@"' >> install.sh
-	@chmod +x install.sh
-	@echo "安装脚本生成完成: install.sh"
 
-# 生成升级脚本
-upgrade-script:
-	@echo "生成升级脚本..."
-	@echo '#!/bin/bash' > upgrade.sh
-	@echo '# Go文件病毒扫描程序升级脚本' >> upgrade.sh
-	@echo '' >> upgrade.sh
-	@echo 'set -e' >> upgrade.sh
-	@echo '' >> upgrade.sh
-	@echo 'PROJECT_NAME="filescan"' >> upgrade.sh
-	@echo 'VERSION="1.0.0"' >> upgrade.sh
-	@echo 'INSTALL_DIR="/usr/local/bin"' >> upgrade.sh
-	@echo 'CONFIG_DIR="/etc/$$PROJECT_NAME"' >> upgrade.sh
-	@echo '' >> upgrade.sh
-	@echo '# 主升级流程' >> upgrade.sh
-	@echo 'main() {' >> upgrade.sh
-	@echo '    echo "开始升级Go文件病毒扫描程序到 v$$VERSION"' >> upgrade.sh
-	@echo '    echo "升级完成!"' >> upgrade.sh
-	@echo '}' >> upgrade.sh
-	@echo '' >> upgrade.sh
-	@echo 'main "$$@"' >> upgrade.sh
-	@chmod +x upgrade.sh
-	@echo "升级脚本生成完成: upgrade.sh"

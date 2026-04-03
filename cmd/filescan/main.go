@@ -89,6 +89,7 @@ func main() {
 
 	fileScanner, err := scanner.NewFileScanner(
 		learningTable,
+		cfg.Scanner.Quarantine,
 		cfg.Scanner.Scan.MaxConcurrentScans,
 		cfg.Scanner.Scan.ScanTimeout,
 		fileSizeLimit,

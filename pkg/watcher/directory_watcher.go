@@ -7,8 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/fsnotify/fsnotify"
 	"go-filescan/pkg/scanner"
+
+	"github.com/fsnotify/fsnotify"
 )
 
 type DirectoryWatcher struct {
@@ -90,8 +91,6 @@ func (dw *DirectoryWatcher) watchLoop(resultsChan chan<- *scanner.ScanResult) {
 				fmt.Println("Watcher events channel closed")
 				return
 			}
-
-			fmt.Printf("File event detected: %s - %s\n", event.Op.String(), event.Name)
 
 			if event.Has(fsnotify.Create) {
 				dw.handleCreate(event.Name, resultsChan)

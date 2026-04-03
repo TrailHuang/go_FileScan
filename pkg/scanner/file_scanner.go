@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"go-filescan/pkg/config"
 	"go-filescan/pkg/learning"
 )
 
@@ -25,6 +26,7 @@ type ScanResult struct {
 
 type FileScanner struct {
 	learningTable *learning.LearningTable
+	quarantine    *QuarantineManager
 	maxWorkers    int
 	scanTimeout   time.Duration
 	fileSizeLimit int64
@@ -33,7 +35,7 @@ type FileScanner struct {
 	wg            sync.WaitGroup
 }
 
-func NewFileScanner(learningTable *learning.LearningTable, maxWorkers int, scanTimeout time.Duration, fileSizeLimit int64) (*FileScanner, error) {
+func NewFileScanner(learningTable *learning.LearningTable, quarantineConfig config.QuarantineConfig, maxWorkers int, scanTimeout time.Duration, fileSizeLimit int64) (*FileScanner, error) {
 	fs := &FileScanner{
 		learningTable: learningTable,
 		maxWorkers:    maxWorkers,
@@ -41,6 +43,14 @@ func NewFileScanner(learningTable *learning.LearningTable, maxWorkers int, scanT
 		fileSizeLimit: fileSizeLimit,
 		resultsChan:   make(chan *ScanResult, 100),
 		stopChan:      make(chan struct{}),
+	}
+
+	if quarantineConfig.Enabled {
+		qm, err := NewQuarantineManager(quarantineConfig.Path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize quarantine manager: %w", err)
+		}
+		fs.quarantine = qm
 	}
 
 	return fs, nil
@@ -78,6 +88,17 @@ func (fs *FileScanner) ScanFile(filePath string) (*ScanResult, error) {
 		result.VirusName = record.VirusName
 		result.IsInfected = true
 		result.ScanMethod = "learning_table"
+
+		// 如果启用了隔离功能，隔离黑样本
+		if fs.quarantine != nil {
+			quarantinePath, err := fs.quarantine.Quarantine(filePath, record.VirusName)
+			if err != nil {
+				fmt.Printf("隔离文件失败: %v\n", err)
+			} else {
+				result.Error = fmt.Sprintf("File quarantined to: %s", quarantinePath)
+			}
+		}
+
 		return result, nil
 	}
 
@@ -191,4 +212,53 @@ func (fs *FileScanner) Stop() {
 
 func (fs *FileScanner) GetResultsChannel() <-chan *ScanResult {
 	return fs.resultsChan
+}
+
+// QuarantineManager 隔离管理器
+type QuarantineManager struct {
+	path string
+}
+
+// NewQuarantineManager 创建隔离管理器
+func NewQuarantineManager(path string) (*QuarantineManager, error) {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		if err := os.MkdirAll(path, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create quarantine directory: %w", err)
+		}
+		fmt.Printf("创建隔离目录: %s\n", path)
+	}
+
+	return &QuarantineManager{path: path}, nil
+}
+
+// Quarantine 隔离文件
+func (qm *QuarantineManager) Quarantine(filePath string, virusName string) (string, error) {
+	fileInfo, err := os.Stat(filePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to stat file: %w", err)
+	}
+
+	if !fileInfo.Mode().IsRegular() {
+		return "", fmt.Errorf("path is not a regular file")
+	}
+
+	// 生成隔离文件名，替换病毒名称中的非法字符
+	baseName := filepath.Base(filePath)
+	safeVirusName := strings.ReplaceAll(virusName, "/", "_")
+	safeVirusName = strings.ReplaceAll(safeVirusName, "\\", "_")
+	safeVirusName = strings.ReplaceAll(safeVirusName, ":", "_")
+	quarantineName := fmt.Sprintf("%s_%s_%s",
+		time.Now().Format("20060102_150405"),
+		safeVirusName,
+		baseName)
+	quarantinePath := filepath.Join(qm.path, quarantineName)
+
+	// 移动文件到隔离目录
+	if err := os.Rename(filePath, quarantinePath); err != nil {
+		return "", fmt.Errorf("failed to quarantine file: %w", err)
+	}
+
+	fmt.Printf("文件已隔离: %s -> %s\n", filePath, quarantinePath)
+
+	return quarantinePath, nil
 }

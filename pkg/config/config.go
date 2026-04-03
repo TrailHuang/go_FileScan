@@ -8,10 +8,16 @@ import (
 )
 
 type ScannerConfig struct {
-	WatchDirectories  []string   `mapstructure:"watch_directories"`
-	LearningTablePath string     `mapstructure:"learning_table_path"`
-	Scan              ScanConfig `mapstructure:"scan"`
-	Log               LogConfig  `mapstructure:"log"`
+	WatchDirectories  []string         `mapstructure:"watch_directories"`
+	LearningTablePath string           `mapstructure:"learning_table_path"`
+	Quarantine        QuarantineConfig `mapstructure:"quarantine"`
+	Scan              ScanConfig       `mapstructure:"scan"`
+	Log               LogConfig        `mapstructure:"log"`
+}
+
+type QuarantineConfig struct {
+	Enabled bool   `mapstructure:"enabled"`
+	Path    string `mapstructure:"path"`
 }
 
 type ScanConfig struct {
