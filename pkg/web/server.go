@@ -280,22 +280,22 @@ func (ws *WebServer) handleRoot(w http.ResponseWriter, r *http.Request) {
         function displayResult(result) {
             const resultDiv = document.getElementById('result');
 
-            if (result.IsInfected) {
+            if (result.is_infected) {
                 resultDiv.innerHTML = '<div class="result virus">' +
                     '<h3>⚠️ 检测到病毒</h3>' +
-                    '<p><strong>文件名：</strong> ' + result.FileName + '</p>' +
-                    '<p><strong>病毒名称：</strong> <span class="virus-name">' + result.VirusName + '</span></p>' +
-                    '<p><strong>扫描方法：</strong> ' + result.ScanMethod + '</p>' +
-                    '<p><strong>扫描时间：</strong> ' + new Date(result.ScanTime).toLocaleString('zh-CN') + '</p>' +
-                    (result.Error ? '<p><strong>错误信息：</strong> ' + result.Error + '</p>' : '') +
+                    '<p><strong>文件名：</strong> ' + result.file_path + '</p>' +
+                    '<p><strong>病毒名称：</strong> <span class="virus-name">' + result.virus_name + '</span></p>' +
+                    '<p><strong>扫描方法：</strong> ' + result.scan_method + '</p>' +
+                    '<p><strong>扫描时间：</strong> ' + new Date(result.scan_time).toLocaleString('zh-CN') + '</p>' +
+                    (result.error ? '<p><strong>错误信息：</strong> ' + result.error + '</p>' : '') +
                     '</div>';
             } else {
                 resultDiv.innerHTML = '<div class="result clean">' +
                     '<h3>✅ 安全文件</h3>' +
-                    '<p><strong>文件名：</strong> ' + result.FileName + '</p>' +
+                    '<p><strong>文件名：</strong> ' + result.file_path + '</p>' +
                     '<p><strong>状态：</strong> <span class="clean-name">白样本</span></p>' +
-                    '<p><strong>扫描方法：</strong> ' + result.ScanMethod + '</p>' +
-                    '<p><strong>扫描时间：</strong> ' + new Date(result.ScanTime).toLocaleString('zh-CN') + '</p>' +
+                    '<p><strong>扫描方法：</strong> ' + result.scan_method + '</p>' +
+                    '<p><strong>扫描时间：</strong> ' + new Date(result.scan_time).toLocaleString('zh-CN') + '</p>' +
                     '</div>';
             }
         }
@@ -317,12 +317,12 @@ func (ws *WebServer) handleRoot(w http.ResponseWriter, r *http.Request) {
 
             historyDiv.innerHTML = scanResults.map((result, index) => {
                 return '<div class="history-item">' +
-                    '<p><strong>#' + (index + 1) + ' ' + result.FileName + '</strong></p>' +
-                    '<p style="color: ' + (result.IsInfected ? '#e53e3e' : '#38a169') + '">' +
-                    (result.IsInfected ? '⚠️ 检测到病毒: ' + result.VirusName : '✅ 安全') +
+                    '<p><strong>#' + (index + 1) + ' ' + result.file_path + '</strong></p>' +
+                    '<p style="color: ' + (result.is_infected ? '#e53e3e' : '#38a169') + '">' +
+                    (result.is_infected ? '⚠️ 检测到病毒: ' + result.virus_name : '✅ 安全') +
                     '</p>' +
                     '<p style="color: #999; font-size: 0.85em;">' +
-                    new Date(result.ScanTime).toLocaleString('zh-CN') +
+                    new Date(result.scan_time).toLocaleString('zh-CN') +
                     '</p>' +
                     '</div>';
             }).join('');

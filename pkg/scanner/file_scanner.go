@@ -18,8 +18,8 @@ type ScanResult struct {
 	FilePath   string    `json:"file_path"`
 	MD5        string    `json:"md5"`
 	VirusName  string    `json:"virus_name"`
-	IsInfected bool      `json:"-"`
-	ScanMethod string    `json:"-"`
+	IsInfected bool      `json:"is_infected"`
+	ScanMethod string    `json:"scan_method"`
 	ScanTime   time.Time `json:"scan_time"`
 	Error      string    `json:"error,omitempty"`
 }

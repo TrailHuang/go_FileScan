@@ -2,15 +2,15 @@
 scanner:
   # 监控目录路径
   watch_directories:
-    - /home/virus_scan/samples/
+    - /workspace/samples/
 
   # 学习表文件路径
-  learning_table_path: /home/virus_scan/md5hash.txt
+  learning_table_path: /workspace/md5hash.txt
 
   # 隔离配置
   quarantine:
     enabled: true
-    path: /home/virus_scan/quarantine/
+    path: /workspace/quarantine/
 
   # 扫描配置
   scan:
@@ -21,7 +21,7 @@ scanner:
   # 日志配置
   log:
     level: info
-    file: /home/virus_scan/scanner.log
+    file: /workspace/scanner.log
     max_size: 100MB
     max_backups: 5
     max_age: 30
@@ -29,5 +29,5 @@ scanner:
 # 输出配置
 output:
   format: json
-  file: /home/virus_scan/scan_results.json
+  file: /workspace/scan_results.json
   include_clean_files: false
