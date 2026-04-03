@@ -16,6 +16,7 @@ import (
 	"go-filescan/pkg/output"
 	"go-filescan/pkg/scanner"
 	"go-filescan/pkg/watcher"
+	"go-filescan/pkg/web"
 )
 
 var (
@@ -101,6 +102,17 @@ func main() {
 
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
+
+	// 在 scan 和 watch 模式下启动 Web 服务器
+	if *mode == "scan" || *mode == "watch" {
+		go func() {
+			// 创建 Web 服务器，使用配置中的第一个监控目录
+			webServer := web.NewWebServer(fileScanner, 8088, "samples", cfg.Scanner.WatchDirectories[0])
+			if err := webServer.Start(); err != nil {
+				log.Printf("Web server failed: %v", err)
+			}
+		}()
+	}
 
 	switch *mode {
 	case "watch":
