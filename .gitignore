@@ -1,0 +1,10 @@
+build/bin/filescan
+build/bin/filescan-linux-amd64
+build/bin/filescan-linux-arm64
+build/dist/filescan-1.0.0-linux-multiarch.tar.gz
+.vscode/launch.json
+cmd/filescan/scan_results.json
+test_directory/1
+test_directory/test_file.txt
+debug_md5hash.txt
+scan_results.json
