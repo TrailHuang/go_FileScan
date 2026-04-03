@@ -20,12 +20,13 @@ type WebServer struct {
 	watchDir    string
 }
 
-func NewWebServer(scanner *scanner.FileScanner, port int, samplesDir string, watchDir string) *WebServer {
+func NewWebServer(fileScanner *scanner.FileScanner, port int, samplesDir string, watchDir string) *WebServer {
 	return &WebServer{
-		scanner:    scanner,
-		port:       port,
-		samplesDir: samplesDir,
-		watchDir:   watchDir,
+		scanner:     fileScanner,
+		port:        port,
+		samplesDir:  samplesDir,
+		scanResults: make([]*scanner.ScanResult, 0),
+		watchDir:    watchDir,
 	}
 }
 
@@ -332,7 +333,7 @@ func (ws *WebServer) handleRoot(w http.ResponseWriter, r *http.Request) {
         fetch('/results')
             .then(res => res.json())
             .then(data => {
-                scanResults = data;
+                scanResults = data || [];
                 renderHistory();
             })
             .catch(() => {});
