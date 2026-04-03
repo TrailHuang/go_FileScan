@@ -107,7 +107,7 @@ func main() {
 	if *mode == "scan" || *mode == "watch" {
 		go func() {
 			// 创建 Web 服务器，使用配置中的第一个监控目录
-			webServer := web.NewWebServer(fileScanner, 8088, "samples", cfg.Scanner.WatchDirectories[0])
+			webServer := web.NewWebServer(fileScanner, 8089, "samples", cfg.Scanner.WatchDirectories[0])
 			if err := webServer.Start(); err != nil {
 				log.Printf("Web server failed: %v", err)
 			}
