@@ -7,10 +7,10 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"runtime"
 	"syscall"
 	"time"
 
+	"go-filescan/pkg/clamav"
 	"go-filescan/pkg/config"
 	"go-filescan/pkg/learning"
 	"go-filescan/pkg/output"
@@ -34,17 +34,34 @@ var (
 	gitCommit = "unknown"
 )
 
+// getVirusDBVersion 获取病毒库版本号
+// 从可执行文件同级目录下查找 append_*.db 文件，* 部分即为版本号
+// 若未找到任何匹配文件，则返回默认版本 "20250711"
+func getVirusDBVersion() string {
+	execPath, err := os.Executable()
+	if err != nil {
+		return "20250711"
+	}
+	execDir := filepath.Dir(execPath)
+
+	matches, err := filepath.Glob(filepath.Join(execDir, "append_*.db"))
+	if err != nil || len(matches) == 0 {
+		return "20250711"
+	}
+
+	// 取第一个匹配文件，提取版本号（append_ 和 .db 之间的部分）
+	baseName := filepath.Base(matches[0])
+	// 去掉前缀 "append_" 和后缀 ".db"
+	versionStr := baseName[len("append_") : len(baseName)-len(".db")]
+	return versionStr
+}
+
 func main() {
 	flag.Parse()
 
 	if *versionFlag {
-		fmt.Printf("Go文件病毒扫描程序\n")
 		fmt.Printf("版本: %s\n", version)
-		fmt.Printf("构建时间: %s\n", buildTime)
-		fmt.Printf("Git提交: %s\n", gitCommit)
-		fmt.Printf("Go版本: %s\n", runtime.Version())
-		fmt.Printf("操作系统: %s\n", runtime.GOOS)
-		fmt.Printf("架构: %s\n", runtime.GOARCH)
+		fmt.Printf("病毒库版本: %s\n", getVirusDBVersion())
 		return
 	}
 
@@ -87,9 +104,22 @@ func main() {
 
 	fileSizeLimit := parseFileSizeLimit(cfg.Scanner.Scan.FileSizeLimit)
 
+	// 初始化 ClamAV 嵌入式扫描器（可选，用于学习表未命中时的降级扫描）
+	clamavScanner, clamavErr := clamav.NewScanner(clamav.Config{
+		Enabled:     cfg.Scanner.ClamAV.Enabled,
+		DatabaseDir: cfg.Scanner.ClamAV.DatabaseDir,
+	})
+	if clamavErr != nil {
+		fmt.Printf("Warning: ClamAV init failed, skipping ClamAV scan: %v\n", clamavErr)
+	}
+	if clamavScanner != nil {
+		defer clamavScanner.Close()
+	}
+
 	fileScanner, err := scanner.NewFileScanner(
 		learningTable,
 		cfg.Scanner.Quarantine,
+		clamavScanner,
 		cfg.Scanner.Scan.MaxConcurrentScans,
 		cfg.Scanner.Scan.ScanTimeout,
 		fileSizeLimit,

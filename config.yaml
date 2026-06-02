@@ -18,6 +18,13 @@ scanner:
     file_size_limit: 100MB
     scan_timeout: 60s
 
+  # ClamAV 嵌入式扫描配置（当学习表未命中时降级使用，无需安装 clamd 服务）
+  # 编译依赖: sudo apt-get install libclamav-dev
+  # 特征库更新: sudo freshclam
+  clamav:
+    enabled: true
+    database_dir: /var/lib/clamav  # 病毒特征库目录（main.cvd, daily.cvd 等）
+
   # 日志配置
   log:
     level: info

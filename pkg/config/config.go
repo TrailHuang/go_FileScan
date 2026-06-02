@@ -7,11 +7,17 @@ import (
 	"github.com/spf13/viper"
 )
 
+type ClamAVConfig struct {
+	Enabled     bool   `mapstructure:"enabled"`      // 是否启用 ClamAV 嵌入式扫描
+	DatabaseDir string `mapstructure:"database_dir"` // 病毒特征库目录
+}
+
 type ScannerConfig struct {
 	WatchDirectories  []string         `mapstructure:"watch_directories"`
 	LearningTablePath string           `mapstructure:"learning_table_path"`
 	Quarantine        QuarantineConfig `mapstructure:"quarantine"`
 	Scan              ScanConfig       `mapstructure:"scan"`
+	ClamAV            ClamAVConfig     `mapstructure:"clamav"`
 	Log               LogConfig        `mapstructure:"log"`
 }
 

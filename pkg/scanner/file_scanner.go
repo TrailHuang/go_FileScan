@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"go-filescan/pkg/clamav"
 	"go-filescan/pkg/config"
 	"go-filescan/pkg/learning"
 )
@@ -27,6 +28,7 @@ type ScanResult struct {
 type FileScanner struct {
 	learningTable *learning.LearningTable
 	quarantine    *QuarantineManager
+	clamavScanner *clamav.Scanner
 	maxWorkers    int
 	scanTimeout   time.Duration
 	fileSizeLimit int64
@@ -35,9 +37,10 @@ type FileScanner struct {
 	wg            sync.WaitGroup
 }
 
-func NewFileScanner(learningTable *learning.LearningTable, quarantineConfig config.QuarantineConfig, maxWorkers int, scanTimeout time.Duration, fileSizeLimit int64) (*FileScanner, error) {
+func NewFileScanner(learningTable *learning.LearningTable, quarantineConfig config.QuarantineConfig, clamavScanner *clamav.Scanner, maxWorkers int, scanTimeout time.Duration, fileSizeLimit int64) (*FileScanner, error) {
 	fs := &FileScanner{
 		learningTable: learningTable,
+		clamavScanner: clamavScanner,
 		maxWorkers:    maxWorkers,
 		scanTimeout:   scanTimeout,
 		fileSizeLimit: fileSizeLimit,
@@ -103,6 +106,46 @@ func (fs *FileScanner) ScanFile(filePath string) (*ScanResult, error) {
 	}
 
 	fmt.Printf("No virus found in learning table for MD5: %s\n", md5Hash)
+
+	// 学习表未命中，降级使用 ClamAV 扫描
+	if fs.clamavScanner != nil && fs.clamavScanner.Enabled() {
+		fmt.Printf("Falling back to ClamAV scan for file: %s\n", filePath)
+
+		virusName, infected, clamavErr := fs.clamavScanner.ScanFile(filePath)
+		if clamavErr != nil {
+			fmt.Printf("ClamAV scan error: %v\n", clamavErr)
+			result.VirusName = "白样本"
+			result.IsInfected = false
+			result.ScanMethod = "md5_only"
+			return result, nil
+		}
+
+		if infected {
+			fmt.Printf("VIRUS DETECTED by ClamAV! File: %s, Virus: %s\n", filePath, virusName)
+			result.VirusName = virusName
+			result.IsInfected = true
+			result.ScanMethod = "clamav"
+
+			// 如果启用了隔离功能，隔离病毒文件
+			if fs.quarantine != nil {
+				quarantinePath, err := fs.quarantine.Quarantine(filePath, virusName)
+				if err != nil {
+					fmt.Printf("隔离文件失败: %v\n", err)
+				} else {
+					result.Error = fmt.Sprintf("File quarantined to: %s", quarantinePath)
+				}
+			}
+
+			return result, nil
+		}
+
+		fmt.Printf("ClamAV scan passed for file: %s\n", filePath)
+		result.VirusName = "白样本"
+		result.IsInfected = false
+		result.ScanMethod = "clamav"
+		return result, nil
+	}
+
 	result.VirusName = "白样本"
 	result.IsInfected = false
 	result.ScanMethod = "md5_only"
