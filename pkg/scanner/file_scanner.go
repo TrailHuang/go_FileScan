@@ -13,6 +13,7 @@ import (
 	"go-filescan/pkg/clamav"
 	"go-filescan/pkg/config"
 	"go-filescan/pkg/learning"
+	"go-filescan/pkg/syslog"
 )
 
 type ScanResult struct {
@@ -29,6 +30,7 @@ type FileScanner struct {
 	learningTable *learning.LearningTable
 	quarantine    *QuarantineManager
 	clamavScanner *clamav.Scanner
+	syslogSender  *syslog.Sender
 	maxWorkers    int
 	scanTimeout   time.Duration
 	fileSizeLimit int64
@@ -37,7 +39,7 @@ type FileScanner struct {
 	wg            sync.WaitGroup
 }
 
-func NewFileScanner(learningTable *learning.LearningTable, quarantineConfig config.QuarantineConfig, clamavScanner *clamav.Scanner, maxWorkers int, scanTimeout time.Duration, fileSizeLimit int64) (*FileScanner, error) {
+func NewFileScanner(learningTable *learning.LearningTable, quarantineConfig config.QuarantineConfig, clamavScanner *clamav.Scanner, syslogConfig config.SyslogConfig, maxWorkers int, scanTimeout time.Duration, fileSizeLimit int64) (*FileScanner, error) {
 	fs := &FileScanner{
 		learningTable: learningTable,
 		clamavScanner: clamavScanner,
@@ -54,6 +56,14 @@ func NewFileScanner(learningTable *learning.LearningTable, quarantineConfig conf
 			return nil, fmt.Errorf("failed to initialize quarantine manager: %w", err)
 		}
 		fs.quarantine = qm
+	}
+
+	if syslogConfig.Enabled {
+		sender, err := syslog.NewSender(syslogConfig)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize syslog sender: %w", err)
+		}
+		fs.syslogSender = sender
 	}
 
 	return fs, nil
@@ -91,6 +101,13 @@ func (fs *FileScanner) ScanFile(filePath string) (*ScanResult, error) {
 		result.VirusName = record.VirusName
 		result.IsInfected = true
 		result.ScanMethod = "learning_table"
+
+		// 通过 syslog 发送告警
+		if fs.syslogSender != nil {
+			if err := fs.syslogSender.SendAlert(result.FilePath, result.MD5, result.VirusName, result.ScanMethod, result.ScanTime); err != nil {
+				fmt.Printf("syslog 发送失败: %v\n", err)
+			}
+		}
 
 		// 如果启用了隔离功能，隔离黑样本
 		if fs.quarantine != nil {
@@ -251,6 +268,10 @@ func (fs *FileScanner) worker(workChan <-chan string) {
 func (fs *FileScanner) Stop() {
 	close(fs.stopChan)
 	fs.wg.Wait()
+
+	if fs.syslogSender != nil {
+		fs.syslogSender.Close()
+	}
 }
 
 func (fs *FileScanner) GetResultsChannel() <-chan *ScanResult {

@@ -12,10 +12,19 @@ type ClamAVConfig struct {
 	DatabaseDir string `mapstructure:"database_dir"` // 病毒特征库目录
 }
 
+type SyslogConfig struct {
+	Enabled  bool   `mapstructure:"enabled"`
+	Server   string `mapstructure:"server"`
+	Port     int    `mapstructure:"port"`
+	Facility string `mapstructure:"facility"`
+	Tag      string `mapstructure:"tag"`
+}
+
 type ScannerConfig struct {
 	WatchDirectories  []string         `mapstructure:"watch_directories"`
 	LearningTablePath string           `mapstructure:"learning_table_path"`
 	Quarantine        QuarantineConfig `mapstructure:"quarantine"`
+	Syslog            SyslogConfig     `mapstructure:"syslog"`
 	Scan              ScanConfig       `mapstructure:"scan"`
 	ClamAV            ClamAVConfig     `mapstructure:"clamav"`
 	Log               LogConfig        `mapstructure:"log"`
