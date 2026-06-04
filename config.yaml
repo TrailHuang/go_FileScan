@@ -12,6 +12,14 @@ scanner:
     enabled: true
     path: /home/virus_scan/quarantine/
 
+  # Syslog 配置
+  syslog:
+    enabled: false
+    server: 127.0.0.1
+    port: 514
+    facility: daemon
+    tag: FileScanner
+
   # 扫描配置
   scan:
     max_concurrent_scans: 10

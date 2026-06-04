@@ -29,9 +29,7 @@ var (
 
 // 版本信息（通过编译时注入）
 var (
-	version   = "dev"
-	buildTime = "unknown"
-	gitCommit = "unknown"
+	version = "dev"
 )
 
 // getVirusDBVersion 获取病毒库版本号
@@ -120,6 +118,7 @@ func main() {
 		learningTable,
 		cfg.Scanner.Quarantine,
 		clamavScanner,
+		cfg.Scanner.Syslog,
 		cfg.Scanner.Scan.MaxConcurrentScans,
 		cfg.Scanner.Scan.ScanTimeout,
 		fileSizeLimit,
